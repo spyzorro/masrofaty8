@@ -37,7 +37,32 @@ jobs:
           echo "Repository files:"
           find . -maxdepth 3 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" -o -name "build.gradle" -o -name "build.gradle.kts" \) | sort
 
-          SETTINGS_FILE=$(find . -maxdepth 6 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -1)
+          find_valid_project() {
+            while IFS= read -r SETTINGS_CANDIDATE; do
+              DIR=$(dirname "$SETTINGS_CANDIDATE")
+              case "$DIR" in
+                *modified-files*|*modified_files*|*patch-only*|*patch_only*)
+                  echo "Skipping patch/modified folder: $DIR" >&2
+                  continue
+                  ;;
+              esac
+              if [ -f "$DIR/app/build.gradle" ] \
+                && [ -f "$DIR/app/src/main/AndroidManifest.xml" ] \
+                && [ -f "$DIR/app/src/main/res/drawable/app_logo.png" ] \
+                && [ -f "$DIR/app/src/main/res/xml/backup_rules.xml" ] \
+                && [ -f "$DIR/app/src/main/res/xml/data_extraction_rules.xml" ] \
+                && [ -f "$DIR/app/src/main/res/values/styles.xml" ] \
+                && [ -f "$DIR/app/src/main/java/com/mohamed/expenseguard/MainActivity.java" ] \
+                && [ -f "$DIR/app/src/main/java/com/mohamed/expenseguard/MessageParser.java" ]; then
+                echo "$SETTINGS_CANDIDATE"
+                return 0
+              fi
+              echo "Skipping incomplete Gradle project: $DIR" >&2
+            done
+            return 1
+          }
+
+          SETTINGS_FILE=$(find . -maxdepth 6 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | sort | find_valid_project || true)
 
           if [ -z "$SETTINGS_FILE" ]; then
             echo "No Gradle settings file found in repository files. Trying ZIP files if any exist..."
@@ -49,7 +74,7 @@ jobs:
               mkdir -p "$DEST"
               echo "Extracting $ZIP_FILE"
               unzip -q "$ZIP_FILE" -d "$DEST" || true
-              SETTINGS_FILE=$(find "$DEST" -maxdepth 8 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | head -1)
+              SETTINGS_FILE=$(find "$DEST" -maxdepth 8 -type f \( -name "settings.gradle" -o -name "settings.gradle.kts" \) | sort | find_valid_project || true)
               if [ -n "$SETTINGS_FILE" ]; then
                 break
               fi
